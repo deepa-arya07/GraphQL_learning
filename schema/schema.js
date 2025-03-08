@@ -31,14 +31,66 @@ const {
 //     age: 25,
 //   },
 // ];
+// const CompanyType = new GraphQLObjectType({
+//   name: "Company",
+//   fields: () => ({
+//     //The reason fields is wrapped inside () => ({ ... }) is due to hoisting and circular dependencies in JavaScript and GraphQL.
+//     id: { type: GraphQLString },
+//     name: { type: GraphQLString },
+//     description: { type: GraphQLString },
+//     users: {
+//       type: new GraphQLList(UserType),
+//       resolve(parentValue, args) {
+//         return axios.get(
+//           `http://localhost:5000/companies/${parentValue.id}/users`
+//         );
+//       },
+//     },
+//   }),
+// });
 const CompanyType = new GraphQLObjectType({
   name: "Company",
-  fields: {
+  fields: () => ({
     id: { type: GraphQLString },
     name: { type: GraphQLString },
     description: { type: GraphQLString },
-  },
+    users: {
+      type: new GraphQLList(UserType),
+      resolve(parentValue, args) {
+        return axios
+          .get(`http://localhost:5000/users?companyId=${parentValue.id}`) // ✅ Correct way to filter users
+          .then((res) => res.data)
+          .catch((err) => {
+            console.error("Users Not Found:", err.message);
+            return [];
+          });
+      },
+    },
+  }),
 });
+// const UserType = new GraphQLObjectType({
+//   name: "User",
+//   fields: () => ({
+//     id: { type: GraphQLString },
+//     profile: { type: GraphQLString },
+//     firstName: { type: GraphQLString },
+//     age: { type: GraphQLInt },
+//     company: {
+//       type: CompanyType,
+//       resolve(parentValue, args) {
+//         if (!parentValue.companyId) return null; // ✅ Fix: Avoid sending requests if companyId is missing
+//         return axios
+//           .get(`http://localhost:5000/companies/${parentValue.companyId}/users`)
+//           .then((res) => res.data)
+//           .catch((err) => {
+//             console.error("Company Not Found:", err.message);
+//             return null; // ✅ Return null if company does not exist
+//           });
+//       },
+//     },
+//   }),
+// });
+
 const UserType = new GraphQLObjectType({
   name: "User",
   fields: () => ({
@@ -46,22 +98,22 @@ const UserType = new GraphQLObjectType({
     profile: { type: GraphQLString },
     firstName: { type: GraphQLString },
     age: { type: GraphQLInt },
+    companyId: { type: GraphQLString }, // ✅ Keep companyId for reference
     company: {
       type: CompanyType,
       resolve(parentValue, args) {
-        if (!parentValue.companyId) return null; // ✅ Fix: Avoid sending requests if companyId is missing
+        if (!parentValue.companyId) return null;
         return axios
           .get(`http://localhost:5000/companies/${parentValue.companyId}`)
           .then((res) => res.data)
           .catch((err) => {
             console.error("Company Not Found:", err.message);
-            return null; // ✅ Return null if company does not exist
+            return null;
           });
       },
     },
   }),
 });
-
 const RootQuery = new GraphQLObjectType({
   name: "RootQueryType",
   fields: () => ({
@@ -69,7 +121,6 @@ const RootQuery = new GraphQLObjectType({
       type: UserType,
       args: { id: { type: GraphQLString } },
       resolve(parentValue, args) {
-        // return users.find((user) => user.id === args.id); // this is when we have the user object hard-coded
         return axios
           .get(`http://localhost:5000/users/${args.id}`)
           .then((response) => response.data);
@@ -86,20 +137,50 @@ const RootQuery = new GraphQLObjectType({
     },
     users: {
       type: new GraphQLList(UserType),
-      args: { id: { type: GraphQLString } },
-      resolve(parentValue, args) {
-        if (args.id) {
-          return axios
-            .get(`http://localhost:5000/users/${args.id}`)
-            .then((response) => [response.data]); // ✅ Return an array since users is a list
-        }
-        return axios
-          .get("http://localhost:5000/users")
-          .then((response) => response.data);
+      resolve() {
+        return axios.get("http://localhost:5000/users").then((res) => res.data);
       },
     },
   }),
 });
+// const RootQuery = new GraphQLObjectType({
+//   name: "RootQueryType",
+//   fields: () => ({
+//     user: {
+//       type: UserType,
+//       args: { id: { type: GraphQLString } },
+//       resolve(parentValue, args) {
+//         // return users.find((user) => user.id === args.id); // this is when we have the user object hard-coded
+//         return axios
+//           .get(`http://localhost:5000/users/${args.id}`)
+//           .then((response) => response.data);
+//       },
+//     },
+//     company: {
+//       type: CompanyType,
+//       args: { id: { type: GraphQLString } },
+//       resolve(parentValue, args) {
+//         return axios
+//           .get(`http://localhost:5000/companies/${args.id}`)
+//           .then((response) => response.data);
+//       },
+//     },
+//     users: {
+//       type: new GraphQLList(UserType),
+//       args: { id: { type: GraphQLString } },
+//       resolve(parentValue, args) {
+//         if (args.id) {
+//           return axios
+//             .get(`http://localhost:5000/users/${args.id}`)
+//             .then((response) => [response.data]); // ✅ Return an array since users is a list
+//         }
+//         return axios
+//           .get("http://localhost:5000/users")
+//           .then((response) => response.data);
+//       },
+//     },
+//   }),
+// });
 
 module.exports = new GraphQLSchema({
   query: RootQuery,
