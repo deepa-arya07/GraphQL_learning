@@ -31,7 +31,14 @@ const {
 //     age: 25,
 //   },
 // ];
-
+const CompanyType = new GraphQLObjectType({
+  name: "Company",
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+    description: { type: GraphQLString },
+  },
+});
 const UserType = new GraphQLObjectType({
   name: "User",
   fields: () => ({
@@ -39,6 +46,19 @@ const UserType = new GraphQLObjectType({
     profile: { type: GraphQLString },
     firstName: { type: GraphQLString },
     age: { type: GraphQLInt },
+    company: {
+      type: CompanyType,
+      resolve(parentValue, args) {
+        if (!parentValue.companyId) return null; // ✅ Fix: Avoid sending requests if companyId is missing
+        return axios
+          .get(`http://localhost:5000/companies/${parentValue.companyId}`)
+          .then((res) => res.data)
+          .catch((err) => {
+            console.error("Company Not Found:", err.message);
+            return null; // ✅ Return null if company does not exist
+          });
+      },
+    },
   }),
 });
 
@@ -52,15 +72,30 @@ const RootQuery = new GraphQLObjectType({
         // return users.find((user) => user.id === args.id); // this is when we have the user object hard-coded
         return axios
           .get(`http://localhost:5000/users/${args.id}`)
-          .then((response) => console.log(response.data));
+          .then((response) => response.data);
+      },
+    },
+    company: {
+      type: CompanyType,
+      args: { id: { type: GraphQLString } },
+      resolve(parentValue, args) {
+        return axios
+          .get(`http://localhost:5000/companies/${args.id}`)
+          .then((response) => response.data);
       },
     },
     users: {
       type: new GraphQLList(UserType),
-      resolve() {
+      args: { id: { type: GraphQLString } },
+      resolve(parentValue, args) {
+        if (args.id) {
+          return axios
+            .get(`http://localhost:5000/users/${args.id}`)
+            .then((response) => [response.data]); // ✅ Return an array since users is a list
+        }
         return axios
           .get("http://localhost:5000/users")
-          .then((response) => response.data); // ✅ Fix: Fetching from JSON server
+          .then((response) => response.data);
       },
     },
   }),
@@ -69,3 +104,21 @@ const RootQuery = new GraphQLObjectType({
 module.exports = new GraphQLSchema({
   query: RootQuery,
 });
+
+// ��️ Example GraphQL Query
+// 🛠️ How It Works
+// When a query like this is made:
+// {
+//   user(id: "23") {
+//     id
+//     firstName
+//     age
+//   }
+// }
+
+// The resolve function in GraphQL determines how the data for a particular field should be fetched. It tells GraphQL where and how to retrieve the required data when a query is made.
+
+// //2 GraphQL calls the resolve function inside the user field.
+// //3 Inside resolve, axios.get(...) makes an HTTP request to fetch user data from http://localhost:5000/users/23.
+// //4 When the data is received, response.data is returned.
+// //5GraphQL sends this data back to the client.
